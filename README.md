@@ -1,5 +1,4 @@
-# Serge - LLaMA made easy 🦙
-
+# Serge - MikeD
 ![License](https://img.shields.io/github/license/nsarrazin/serge)
 [![Discord](https://img.shields.io/discord/1088427963801948201?label=Discord)](https://discord.gg/62Hc6FEYQH)
 
@@ -9,85 +8,154 @@ A chat interface based on [llama.cpp](https://github.com/ggerganov/llama.cpp) fo
 - **Redis** for storing chat history & parameters
 - **FastAPI + langchain** for the API, wrapping calls to [llama.cpp](https://github.com/ggerganov/llama.cpp) using the [python bindings](https://github.com/abetlen/llama-cpp-python)
 
-[demo.webm](https://user-images.githubusercontent.com/25119303/226897188-914a6662-8c26-472c-96bd-f51fc020abf6.webm)
-
-## Getting started
-
-Setting up Serge is very easy. Starting it up can be done in a single command:
-
-```
-docker run -d -v weights:/usr/src/app/weights -v datadb:/data/db/ -p 8008:8008 ghcr.io/nsarrazin/serge:latest
-```
-
-Then just go to http://localhost:8008/ and you're good to go!
-
-The API documentation can be found at http://localhost:8008/api/docs
-
-#### Windows
-
-Make sure you have docker desktop installed, WSL2 configured and enough free RAM to run models. (see below)
-
-#### Kubernetes & docker compose
-
-Setting up Serge on Kubernetes or docker compose can be found in the wiki: https://github.com/nsarrazin/serge/wiki/Integrating-Serge-in-your-orchestration#kubernetes-example
-
-## Models
-
-Currently the following models are supported:
-
-- Alpaca 7B
-- Alpaca 7B-native
-- Alpaca 13B
-- Alpaca 30B
-- GPT4All
-- Vicuna 7B
-- Vicuna 13B
-- Open Assistant 13B
-- Open Assistant 30B
-
-If you have existing weights from another project you can add them to the `serge_weights` volume using `docker cp`.
-
-### :warning: A note on _memory usage_
-
-LLaMA will just crash if you don't have enough available memory for your model.
-
-- 7B requires about 4.5GB of free RAM
-- 13B requires about 12GB free
-- 30B requires about 20GB free
+IMPLEMENTATION OF THE RESOURCE MANAGER
+AUTOLOCK (MULTIPLE POSTS FROM SAME WINDOW WHEN THE MODEL STILL WRITING)
 
 
-## Support
+TUTORIAL ADD WAITING FOR RESOURCES & QUEUE LINE TO SERGE
 
-Feel free to join the discord if you need help with the setup: https://discord.gg/62Hc6FEYQH
+1. 1st we need to edit Dockerfile from /serge/Dockerfile
+At the end of the file you need to put:
+RUN pip install psutil
 
-## Contributing
+2. We need to edit the file /serge/api/src/serge/main.py as following
+On top add:
+from pydantic import BaseModel
+from typing import Dict
+import psutil
+import uvicorn
+from fastapi import APIRouter
 
-Serge is always open for contributions! If you catch a bug or have a feature idea, feel free to open an issue or a PR.
+3. After
+api_app.include_router(model_router)
+app.mount("/api", api_app)
 
-If you want to run Serge in development mode (with hot-module reloading for svelte & autoreload for FastAPI) you can do so like this:
+ADD:
+########ADDED ROUTES#######
 
-```
-git clone https://github.com/nsarrazin/serge.git
-DOCKER_BUILDKIT=1 docker compose -f docker-compose.dev.yml up -d --build
-```
+@app.get("/cpu_usage")
+def get_cpu_usage():
+    total_cores = psutil.cpu_count()
+    cpu_usage = psutil.cpu_percent()  # in percentage
 
-You can test the production image with
+    # Calculate the total core usage
+    total_core_usage = total_cores * (cpu_usage / 100)
 
-```
+    # Split the core usage into full and partially used cores
+    full_cores_used = int(math.floor(total_core_usage))
+    partial_core_usage = total_core_usage - full_cores_used
+
+    # Calculate the number of idle cores
+    idle_cores = total_cores - full_cores_used - (1 if partial_core_usage > 0 else 0)
+
+    return {"idle_cores": idle_cores}
+
+###CREATE JSON IF NOT EXISTS
+def create_json_if_not_exists(file_path, default_content):
+    if not os.path.exists(file_path):
+        with open(file_path, "w") as f:
+            json.dump(default_content, f)
+
+json_file_path = "static/data.json"
+default_content = {"tasks": []}
+
+create_json_if_not_exists(json_file_path, default_content)
+
+@app.get("/tasks")###SEE THE QUEUE LINE
+async def get_tasks():
+    return FileResponse(json_file_path, media_type="application/json")
+###########################
+
+
+4. At the end of the file you need to add CORS
+
+# Set up CORS middleware
+origins = [
+    "http://localhost",
+    "http://127.0.0.1",
+]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+Now we have routes to seek in the processor usage and also the queue line
+USAGE: XXX.XXX.XXX.XXX:8008/cpu_usage
+LINE: XXX.XXX.XXX.XXX:8008/tasks
+
+
+
+5. Go to /serge/web/src/routes/chat/[id] and edit with nano +page.svelte
+
+After  
+ $: prompt = "";
+let container;
+Remove the function askQuestion() and add the following:
+////////////////HERE THE MODIFIED FUNCTION
+async function askQuestion() {
+  try {
+    const response = await fetch('/cpu_usage');
+    const content = await response.json();
+
+    if (content.idle_cores >= data.chat.params.n_threads && prompt) {
+      const data = new URLSearchParams();
+      data.append("prompt", prompt);
+
+      const eventSource = new EventSource(
+        "/api/chat/" + $page.params.id + "/question?" + data.toString()
+      );
+
+      history = [
+        ...history,
+        {
+          type: "human",
+          data: {
+            content: prompt,
+          },
+        },
+        {
+          type: "ai",
+          data: {
+            content: "",
+          },
+        },
+      ];
+
+      prompt = "";
+      eventSource.addEventListener("message", (event) => {
+        history[history.length - 1].data.content += event.data;
+      });
+
+      eventSource.addEventListener("close", async () => {
+        eventSource.close();
+        await invalidate("/api/chat/" + $page.params.id);
+      });
+
+      eventSource.onerror = async (error) => {
+        eventSource.close();
+        history[history.length - 1].data.content = "A server error occurred.";
+        await invalidate("/api/chat/" + $page.params.id);
+      };
+    } else {
+      console.log("Function cannot run... No idle cores available. Retrying in 1 second.");
+      setTimeout(() => {
+        askQuestion();
+      }, 1000);
+    }
+  } catch (error) {
+    console.error("Error fetching cpu_usage:", error);
+  }
+}
+
+/////END OF MODIFIED FUNCTION
+
+6. Now remove your old docker files and image: 
+DOCKER_BUILDKIT=1 docker compose down && docker image rm serge_serge:latest
+7. Rebuild Docker
 DOCKER_BUILDKIT=1 docker compose up -d --build
-```
 
-## What's next
+8. And test it
 
-- [x] Front-end to interface with the API
-- [x] Pass model parameters when creating a chat
-- [x] Manager for model files
-- [ ] Support for other models
-- [ ] LangChain integration
-- [ ] User profiles & authentication
-
-And a lot more!
-
-## Credits
-
-Llama by The Icon Z from <a href="https://thenounproject.com/browse/icons/term/llama" target="_blank" title="Llama Icons">Noun Project</a> CC BY 3.0
