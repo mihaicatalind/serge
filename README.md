@@ -16,7 +16,9 @@ TUTORIAL ADD WAITING FOR RESOURCES & QUEUE LINE TO SERGE
 
 1. 1st we need to edit Dockerfile from /serge/Dockerfile
 At the end of the file you need to put:
+```
 RUN pip install psutil
+```
 
 2. We need to edit the file /serge/api/src/serge/main.py as following
 On top add:
