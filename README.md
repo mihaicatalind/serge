@@ -1,4 +1,5 @@
-# Serge - MikeD
+# Serge with  MikeD & pablines Touches :D
+
 ![License](https://img.shields.io/github/license/nsarrazin/serge)
 [![Discord](https://img.shields.io/discord/1088427963801948201?label=Discord)](https://discord.gg/62Hc6FEYQH)
 
