@@ -22,18 +22,21 @@ RUN pip install psutil
 
 2. We need to edit the file /serge/api/src/serge/main.py as following
 On top add:
+```
 from pydantic import BaseModel
 from typing import Dict
 import psutil
 import uvicorn
 from fastapi import APIRouter
+```
 
 3. After
+```
 api_app.include_router(model_router)
 app.mount("/api", api_app)
-
+```
 ADD:
-<code>
+```
 ########ADDED ROUTES#######
 
 @app.get("/cpu_usage")
@@ -68,10 +71,10 @@ create_json_if_not_exists(json_file_path, default_content)
 async def get_tasks():
     return FileResponse(json_file_path, media_type="application/json")
 ###########################
-</code>
+```
 
 4. At the end of the file you need to add CORS
-
+```
 # Set up CORS middleware
 origins = [
     "http://localhost",
@@ -84,7 +87,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
+```
 Now we have routes to seek in the processor usage and also the queue line
 USAGE: XXX.XXX.XXX.XXX:8008/cpu_usage
 LINE: XXX.XXX.XXX.XXX:8008/tasks
@@ -94,9 +97,13 @@ LINE: XXX.XXX.XXX.XXX:8008/tasks
 5. Go to /serge/web/src/routes/chat/[id] and edit with nano +page.svelte
 
 After  
+ ```
  $: prompt = "";
 let container;
-Remove the function askQuestion() and add the following:
+```
+Remove the function ```askQuestion()``` and add the following:
+
+```
 ////////////////HERE THE MODIFIED FUNCTION
 async function askQuestion() {
   try {
@@ -154,11 +161,12 @@ async function askQuestion() {
 }
 
 /////END OF MODIFIED FUNCTION
+```
 
 6. Now remove your old docker files and image: 
-DOCKER_BUILDKIT=1 docker compose down && docker image rm serge_serge:latest
+```DOCKER_BUILDKIT=1 docker compose down && docker image rm serge_serge:latest```
 7. Rebuild Docker
-DOCKER_BUILDKIT=1 docker compose up -d --build
+```DOCKER_BUILDKIT=1 docker compose up -d --build```
 
 8. And test it
 
