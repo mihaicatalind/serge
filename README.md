@@ -31,6 +31,7 @@ api_app.include_router(model_router)
 app.mount("/api", api_app)
 
 ADD:
+<code>
 ########ADDED ROUTES#######
 
 @app.get("/cpu_usage")
@@ -65,7 +66,7 @@ create_json_if_not_exists(json_file_path, default_content)
 async def get_tasks():
     return FileResponse(json_file_path, media_type="application/json")
 ###########################
-
+</code>
 
 4. At the end of the file you need to add CORS
 
